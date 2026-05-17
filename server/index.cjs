@@ -21,20 +21,31 @@ app.use(helmet({
   crossOriginEmbedderPolicy: false,
 }));
 
-// CORS: restrict to known origins in production
+// CORS: restrict to known origins in production, but always allow same-origin
 const allowedOrigins = process.env.CORS_ORIGINS
-  ? process.env.CORS_ORIGINS.split(',')
+  ? process.env.CORS_ORIGINS.split(',').map(o => o.trim())
   : ['http://localhost:5173', 'http://localhost:5000'];
-app.use(cors({
-  origin: (origin, callback) => {
-    if (!origin || allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
-  credentials: true,
-}));
+
+app.use((req, res, next) => {
+  cors({
+    origin: (origin, callback) => {
+      // Allow requests with no origin (like mobile apps or curl requests)
+      if (!origin) return callback(null, true);
+      
+      // Always allow if the origin matches the server's current host (same-origin)
+      if (origin.includes(req.get('host'))) return callback(null, true);
+
+      // Check against explicit allowed origins list
+      if (allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        console.warn(`Blocked by CORS: ${origin} trying to access ${req.originalUrl}`);
+        callback(new Error('Not allowed by CORS'));
+      }
+    },
+    credentials: true,
+  })(req, res, next);
+});
 
 // ─── Body Parsing ──────────────────────────────
 app.use(express.json({ limit: '10mb' }));
