@@ -1,0 +1,494 @@
+// Global Smile — Production Database Schema
+// Neon PostgreSQL + Prisma ORM
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─── ENUMS ─────────────────────────────────────
+
+enum UserRole {
+  PATIENT
+  ADMIN
+  DENTIST
+  SPECIALIST
+}
+
+enum TreatmentStatus {
+  INQUIRY
+  CONSULTATION
+  PLANNING
+  IN_PROGRESS
+  COMPLETED
+  FOLLOW_UP
+}
+
+enum MilestoneStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+}
+
+enum AppointmentStatus {
+  PENDING
+  SCHEDULED
+  CONFIRMED
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
+enum ReferralStatus {
+  PENDING
+  IN_REVIEW
+  ACCEPTED
+  REJECTED
+  COMPLETED
+}
+
+enum LeadStatus {
+  NEW
+  CONTACTED
+  QUALIFIED
+  CONSULTATION
+  CONVERTED
+  LOST
+}
+
+enum Severity {
+  MILD
+  MODERATE
+  SEVERE
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum NotificationType {
+  APPOINTMENT
+  TREATMENT
+  MESSAGE
+  REFERRAL
+  SYSTEM
+}
+
+// ─── USERS ─────────────────────────────────────
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  passwordHash  String
+  firstName     String
+  lastName      String
+  role          UserRole  @default(PATIENT)
+  country       String?
+  phone         String?
+  avatar        String?
+  bio           String?
+  isActive      Boolean   @default(true)
+  lastLoginAt   DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Relations
+  patient           Patient?
+  dentistProfile    DentistProfile?
+  notifications     Notification[]
+  sentMessages      Message[]       @relation("SentMessages")
+  receivedMessages  Message[]       @relation("ReceivedMessages")
+
+  @@index([email])
+  @@index([role])
+}
+
+// ─── PATIENTS ──────────────────────────────────
+
+model Patient {
+  id                String          @id @default(cuid())
+  userId            String          @unique
+  treatmentType     String?
+  treatmentStatus   TreatmentStatus @default(INQUIRY)
+  completionPercent Int             @default(0)
+  nextAppointment   DateTime?
+  medicalHistory    Json?
+  allergies         String?
+  insuranceInfo     Json?
+
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  // Relations
+  user              User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  milestones        Milestone[]
+  appointments      Appointment[]
+  documents         Document[]
+  aiReports         AIReport[]
+  referrals         Referral[]
+  medications       MedicationSchedule[]
+  reminderLogs      ReminderLog[]
+
+  @@index([userId])
+  @@index([treatmentStatus])
+}
+
+// ─── TREATMENT MILESTONES ──────────────────────
+
+model Milestone {
+  id          String          @id @default(cuid())
+  patientId   String
+  title       String
+  description String?
+  status      MilestoneStatus @default(PENDING)
+  date        DateTime?
+  order       Int             @default(0)
+  notes       String?
+  verifiedBy  String?
+
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  patient     Patient         @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@index([patientId])
+  @@index([status])
+}
+
+// ─── APPOINTMENTS ──────────────────────────────
+
+model Appointment {
+  id          String            @id @default(cuid())
+  patientId   String
+  doctorName  String
+  type        String
+  status      AppointmentStatus @default(PENDING)
+  scheduledAt DateTime
+  duration    Int               @default(60) // minutes
+  notes       String?
+  meetingUrl  String?           // for video consultations
+  location    String?
+
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  patient     Patient           @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@index([patientId])
+  @@index([scheduledAt])
+  @@index([status])
+}
+
+// ─── AI ANALYSIS REPORTS ───────────────────────
+
+model AIReport {
+  id            String   @id @default(cuid())
+  patientId     String
+  imageUrl      String?
+  provider      String   // "openrouter", "nvidia", "huggingface", "demo"
+  model         String?  // specific model used
+  overallScore  Int      @default(0)
+  findings      Json     // Array of findings
+  recommendations Json   // Array of recommendations
+  aesthetics    Json?    // Aesthetic assessment scores
+  summary       String?
+  costEstimate  Float?   // estimated API cost
+  processingMs  Int?     // processing time in ms
+  disclaimer    String   @default("This is not a medical diagnosis.")
+
+  createdAt     DateTime @default(now())
+
+  patient       Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@index([patientId])
+  @@index([createdAt])
+}
+
+// ─── DOCUMENTS ─────────────────────────────────
+
+model Document {
+  id          String   @id @default(cuid())
+  patientId   String
+  filename    String
+  originalName String
+  category    String   // "X-Ray", "Photo", "Report", "Insurance", "Consent"
+  mimeType    String?
+  size        Int      @default(0)
+  url         String
+
+  createdAt   DateTime @default(now())
+
+  patient     Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@index([patientId])
+  @@index([category])
+}
+
+// ─── REFERRALS ─────────────────────────────────
+
+model Referral {
+  id              String         @id @default(cuid())
+  patientId       String?
+  dentistId       String
+  dentistName     String
+  specialistId    String?
+  specialistName  String?
+  patientName     String
+  reason          String
+  status          ReferralStatus @default(PENDING)
+  notes           String?
+  urgency         Priority       @default(MEDIUM)
+  responseNotes   String?
+  completedAt     DateTime?
+
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  patient         Patient?       @relation(fields: [patientId], references: [id], onDelete: SetNull)
+
+  @@index([dentistId])
+  @@index([specialistId])
+  @@index([status])
+}
+
+// ─── DENTIST PROFILES ──────────────────────────
+
+model DentistProfile {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  specialization  String?
+  licenseNumber   String?
+  clinicName      String?
+  clinicAddress   String?
+  yearsExperience Int?
+  referralCount   Int      @default(0)
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ─── LEADS (Admin CRM) ────────────────────────
+
+model Lead {
+  id          String     @id @default(cuid())
+  name        String
+  email       String
+  phone       String?
+  country     String?
+  treatment   String?
+  status      LeadStatus @default(NEW)
+  source      String?    // "website", "referral", "social"
+  notes       String?
+  assignedTo  String?
+
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  @@index([status])
+  @@index([email])
+  @@index([createdAt])
+}
+
+// ─── CERTIFICATIONS ────────────────────────────
+
+model Certification {
+  id          String   @id @default(cuid())
+  name        String
+  issuedBy    String
+  category    String
+  validUntil  DateTime
+  status      String   @default("active") // "active", "expiring", "expired"
+  documentUrl String?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([status])
+}
+
+// ─── STERILIZATION LOGS ────────────────────────
+
+model SterilizationLog {
+  id          String   @id @default(cuid())
+  equipmentId String
+  equipment   String
+  operator    String
+  method      String
+  temperature Float?
+  duration    Int?     // minutes
+  status      String   @default("passed") // "passed", "failed"
+  batchNumber String?
+  notes       String?
+
+  performedAt DateTime @default(now())
+
+  @@index([performedAt])
+  @@index([equipmentId])
+}
+
+// ─── MESSAGES ──────────────────────────────────
+
+model Message {
+  id          String   @id @default(cuid())
+  senderId    String
+  receiverId  String
+  subject     String?
+  content     String
+  read        Boolean  @default(false)
+  attachments Json?
+
+  createdAt   DateTime @default(now())
+
+  sender      User     @relation("SentMessages", fields: [senderId], references: [id])
+  receiver    User     @relation("ReceivedMessages", fields: [receiverId], references: [id])
+
+  @@index([senderId])
+  @@index([receiverId])
+  @@index([read])
+}
+
+// ─── NOTIFICATIONS ─────────────────────────────
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  title     String
+  message   String
+  type      NotificationType @default(SYSTEM)
+  read      Boolean          @default(false)
+  actionUrl String?
+
+  createdAt DateTime         @default(now())
+
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([read])
+  @@index([createdAt])
+}
+
+// ─── TOURISM COST DATA ─────────────────────────
+
+model TreatmentCost {
+  id          String   @id @default(cuid())
+  treatment   String
+  city        String
+  cost        Float
+  currency    String   @default("USD")
+  updatedAt   DateTime @updatedAt
+
+  @@unique([treatment, city])
+  @@index([treatment])
+}
+
+model TravelCost {
+  id              String   @id @default(cuid())
+  fromCountry     String
+  flightCost      Float
+  accommodationPerDay Float
+  currency        String   @default("USD")
+  updatedAt       DateTime @updatedAt
+
+  @@unique([fromCountry])
+}
+
+// ─── MODULE 5: PATIENT FOLLOW-UP SYSTEM ────────
+
+enum ReminderChannel {
+  WHATSAPP
+  SMS
+  EMAIL
+  PUSH
+}
+
+enum ReminderStatus {
+  SCHEDULED
+  SENT
+  DELIVERED
+  READ
+  FAILED
+}
+
+enum MedicationFrequency {
+  ONCE_DAILY
+  TWICE_DAILY
+  THRICE_DAILY
+  EVERY_6_HOURS
+  EVERY_8_HOURS
+  EVERY_12_HOURS
+  AS_NEEDED
+  WEEKLY
+}
+
+model MedicationSchedule {
+  id          String              @id @default(cuid())
+  patientId   String
+  name        String              // "Amoxicillin 500mg"
+  dosage      String              // "1 tablet"
+  frequency   MedicationFrequency @default(THRICE_DAILY)
+  startDate   DateTime
+  endDate     DateTime
+  timeSlots   String[]            // ["08:00", "14:00", "20:00"]
+  reminders   Boolean             @default(true)
+  isActive    Boolean             @default(true)
+  notes       String?
+  takenCount  Int                 @default(0)
+  missedCount Int                 @default(0)
+
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+
+  patient     Patient             @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@index([patientId])
+  @@index([isActive])
+}
+
+model FollowUpRule {
+  id            String          @id @default(cuid())
+  treatmentType String          // "Dental Implants"
+  dayAfter      Int             // days after treatment (1, 3, 7, 14, 30, 90)
+  type          String          // "checkup", "xray", "review", "cleaning"
+  title         String          // "Post-Op Day 1 Check"
+  message       String          // Reminder message template
+  channel       ReminderChannel @default(PUSH)
+  isActive      Boolean         @default(true)
+  priority      Priority        @default(MEDIUM)
+
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  @@index([treatmentType])
+  @@index([isActive])
+}
+
+model ReminderLog {
+  id          String          @id @default(cuid())
+  patientId   String
+  type        String          // "medication", "followup", "appointment", "precaution"
+  channel     ReminderChannel @default(PUSH)
+  title       String
+  message     String
+  status      ReminderStatus  @default(SCHEDULED)
+  scheduledAt DateTime
+  sentAt      DateTime?
+  deliveredAt DateTime?
+  readAt      DateTime?
+  failReason  String?
+
+  createdAt   DateTime        @default(now())
+
+  patient     Patient         @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@index([patientId])
+  @@index([status])
+  @@index([scheduledAt])
+  @@index([type])
+}
