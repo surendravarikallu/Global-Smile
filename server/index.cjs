@@ -150,7 +150,8 @@ if (process.env.NODE_ENV === 'production') {
     maxAge: '30d',
     etag: true,
   }));
-  app.get('*', (req, res) => {
+  // Express 5 requires RegExp for catch-all to avoid path-to-regexp v8 errors
+  app.get(/.*/, (req, res) => {
     res.sendFile(path.join(__dirname, '../dist/index.html'));
   });
 }
