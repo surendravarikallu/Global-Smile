@@ -43,6 +43,23 @@ app.use(express.urlencoded({ extended: true }));
 // ─── Response Compression ──────────────────────
 app.use(compression());
 
+// ─── Request Audit Logging ─────────────────────
+app.use((req, res, next) => {
+  const start = Date.now();
+  const originalEnd = res.end;
+  res.end = function (...args) {
+    const duration = Date.now() - start;
+    const log = `[${new Date().toISOString()}] ${req.method} ${req.originalUrl} ${res.statusCode} ${duration}ms - ${req.ip}`;
+    if (res.statusCode >= 400) {
+      console.warn(`  ⚠ ${log}`);
+    } else if (process.env.NODE_ENV !== 'production' || req.originalUrl.startsWith('/api/auth')) {
+      console.log(`  📝 ${log}`);
+    }
+    originalEnd.apply(res, args);
+  };
+  next();
+});
+
 // ─── Simple In-Memory Rate Limiter ─────────────
 const rateLimitStore = new Map();
 const RATE_LIMIT_WINDOW_MS = 60 * 1000; // 1 minute
