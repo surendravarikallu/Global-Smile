@@ -73,6 +73,32 @@ router.post('/upload', (req, res) => {
   });
 });
 
+// ─── Batch Upload (Multi-image dental scans) ───
+router.post('/upload-batch', (req, res) => {
+  upload.array('files', 10)(req, res, (err) => {
+    if (err) {
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(413).json({ error: 'File too large. Maximum size is 10MB per file.' });
+      }
+      return res.status(400).json({ error: err.message });
+    }
+    if (!req.files || req.files.length === 0) {
+      return res.status(400).json({ error: 'No files uploaded' });
+    }
+    const uploaded = req.files.map((file, idx) => ({
+      id: `${Date.now()}-${idx}`,
+      filename: file.filename,
+      originalName: file.originalname,
+      url: `/uploads/${file.filename}`,
+      size: file.size,
+      mimeType: file.mimetype,
+      category: file.mimetype.startsWith('image/') ? 'dental-image' : 'document',
+      uploadedAt: new Date().toISOString(),
+    }));
+    res.json({ files: uploaded, count: uploaded.length });
+  });
+});
+
 // ─── Get Patient Files ─────────────────────────
 router.get('/:patientId', (req, res) => {
   const { patientId } = req.params;
