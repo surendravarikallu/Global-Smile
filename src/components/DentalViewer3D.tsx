@@ -1,4 +1,4 @@
-import { useRef, useMemo, useState } from 'react';
+import { useRef, useMemo, useState, Suspense } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { OrbitControls, Html } from '@react-three/drei';
 import * as THREE from 'three';
@@ -401,7 +401,24 @@ function DentalScene({ findings, aesthetics }: DentalViewer3DProps) {
 }
 
 // ══════════════════════════════════════════
+// Loading Fallback
+// ══════════════════════════════════════════
+function LoadingFallback() {
+  return (
+    <Html center>
+      <div className="text-center">
+        <div className="w-10 h-10 border-2 border-slate-600 border-t-cyan-400 rounded-full animate-spin mx-auto mb-2" />
+        <p className="text-xs text-slate-400">Loading dental model...</p>
+      </div>
+    </Html>
+  );
+}
+
+// ══════════════════════════════════════════
 // Exported Component
+// TODO: Replace procedural geometry with GLTF model
+// via useGLTF() for photorealistic rendering.
+// See: https://github.com/surendravarikallu/Global-Smile/issues/2
 // ══════════════════════════════════════════
 export default function DentalViewer3D({ findings, aesthetics, overallScore }: DentalViewer3DProps) {
   const [view, setView] = useState<'full' | 'upper' | 'lower'>('full');
@@ -425,7 +442,9 @@ export default function DentalViewer3D({ findings, aesthetics, overallScore }: D
       </div>
       <div className="w-full h-[480px] relative" style={{ background: 'radial-gradient(ellipse at center, #1a2540 0%, #0c1220 70%, #080d18 100%)' }}>
         <Canvas camera={{ position: cam, fov: 36 }} shadows dpr={[1, 2]} gl={{ antialias: true, toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: 1.1 }}>
-          <DentalScene findings={findings} aesthetics={aesthetics} overallScore={overallScore} />
+          <Suspense fallback={<LoadingFallback />}>
+            <DentalScene findings={findings} aesthetics={aesthetics} overallScore={overallScore} />
+          </Suspense>
         </Canvas>
         {overallScore !== undefined && (
           <div className="absolute top-3 left-3 bg-black/60 backdrop-blur border border-white/8 rounded-xl px-3 py-2 pointer-events-none">
