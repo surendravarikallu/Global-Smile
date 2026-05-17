@@ -66,7 +66,7 @@ export default function TourismCalculator() {
                   <CartesianGrid strokeDasharray="3 3" stroke="rgba(8,145,178,0.1)" />
                   <XAxis dataKey="city" tick={{ fontSize: 12 }} />
                   <YAxis tick={{ fontSize: 12 }} tickFormatter={v => `$${(v/1000).toFixed(0)}k`} />
-                  <Tooltip formatter={(v: number) => [`$${v.toLocaleString()}`, 'Total Cost']} />
+                  <Tooltip formatter={(v: any) => [`$${Number(v).toLocaleString()}`, 'Total Cost']} />
                   <Bar dataKey="totalCost" radius={[8, 8, 0, 0]}>
                     {data.comparison.map((_: any, i: number) => <Cell key={i} fill={barColors[i % barColors.length]} />)}
                   </Bar>
