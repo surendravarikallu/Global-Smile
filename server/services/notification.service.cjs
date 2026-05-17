@@ -38,18 +38,32 @@ async function sendMessage(to, message, isWhatsApp = false) {
     return { sid: `mock_${Date.now()}`, status: 'delivered' };
   }
 
-  // Real mode
-  try {
-    const result = await twilioClient.messages.create({
-      body: message,
-      from,
-      to: toFormatted,
-    });
-    return result;
-  } catch (error) {
-    console.error(`Twilio Error (${isWhatsApp ? 'WhatsApp' : 'SMS'}):`, error.message);
-    throw error;
+  // Real mode with retry logic
+  const MAX_RETRIES = 3;
+  let attempt = 0;
+  let lastError = null;
+
+  while (attempt < MAX_RETRIES) {
+    try {
+      attempt++;
+      const result = await twilioClient.messages.create({
+        body: message,
+        from,
+        to: toFormatted,
+        statusCallback: process.env.TWILIO_STATUS_CALLBACK_URL || undefined,
+      });
+      console.log(`  ✅ ${isWhatsApp ? 'WhatsApp' : 'SMS'} sent to ${to} (attempt ${attempt})`);
+      return result;
+    } catch (error) {
+      lastError = error;
+      console.warn(`  ⚠ Attempt ${attempt}/${MAX_RETRIES} failed: ${error.message}`);
+      if (attempt < MAX_RETRIES) {
+        await new Promise(r => setTimeout(r, 1000 * attempt)); // exponential backoff
+      }
+    }
   }
+  console.error(`  ❌ All ${MAX_RETRIES} attempts failed for ${to}`);
+  throw lastError;
 }
 
 /**
