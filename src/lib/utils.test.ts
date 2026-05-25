@@ -1,3 +1,4 @@
+import { describe, test, expect } from '@jest/globals';
 import { cn } from './utils';
 
 describe('cn utility function', () => {
